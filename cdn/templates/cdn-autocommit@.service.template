@@ -1,0 +1,82 @@
+################################################################################
+# Systemd Service Unit: Per-Tenant Auto-Commit
+# Multi-Tenant CDN System
+#
+# Installation: /etc/systemd/system/cdn-autocommit@.service
+# Usage: systemctl enable cdn-autocommit@<tenant-name>
+################################################################################
+
+[Unit]
+Description=CDN Auto-Commit Service for %i
+Documentation=https://github.com/l2c2technologies/multi-cdn-v2
+After=network.target local-fs.target
+Wants=gitea.service
+PartOf=gitea.service
+
+[Service]
+Type=simple
+User=cdn_%i
+Group=cdnusers
+WorkingDirectory=/srv/cdn/sftp/%i
+
+Environment="TENANT=%i"
+Environment="SFTP_DIR=/srv/cdn/sftp"
+Environment="GIT_DIR=/srv/cdn/git"
+Environment="LOG_DIR=/var/log/cdn"
+Environment="AUTOCOMMIT_DELAY=60"
+Environment="GIT_DEFAULT_BRANCH=main"
+Environment="GIT_COMMIT_PREFIX=[AUTO]"
+
+ExecStart=/opt/scripts/cdn/helpers/cdn-autocommit.sh %i
+
+Restart=on-failure
+RestartSec=10s
+StartLimitBurst=5
+StartLimitIntervalSec=600
+
+TimeoutStartSec=30s
+TimeoutStopSec=30s
+
+# Security Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/cdn/sftp/%i /srv/cdn/git/%i /var/log/cdn
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+PrivateIPC=true
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+MemoryDenyWriteExecute=true
+
+# Resource Limits
+CPUQuota=10%
+MemoryMax=256M
+MemoryHigh=200M
+TasksMax=10
+LimitNOFILE=1024
+LimitNPROC=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cdn-autocommit-%i
+SyslogLevel=info
+
+# Process Priority
+Nice=10
+IOSchedulingClass=idle
+IOSchedulingPriority=7
+
+[Install]
+WantedBy=multi-user.target
