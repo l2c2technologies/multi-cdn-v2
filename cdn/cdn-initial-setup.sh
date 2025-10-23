@@ -6,7 +6,7 @@
 # Purpose: Main entry point for CDN system installation with interactive wizard
 ################################################################################
 
-set -euo pipefail
+set -eEuo pipefail
 
 ################################################################################
 # CONSTANTS
@@ -37,6 +37,141 @@ fi
 
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/includes/wizard-common.sh"
+
+################################################################################
+# ERROR HANDLER
+################################################################################
+
+error_handler() {
+    local exit_code=$?
+    local line_no=$1
+    
+    echo ""
+    echo -e "${COLOR_RED}╔════════════════════════════════════════════════════════════╗${COLOR_NC}"
+    echo -e "${COLOR_RED}║                    INSTALLATION FAILED                     ║${COLOR_NC}"
+    echo -e "${COLOR_RED}╚════════════════════════════════════════════════════════════╝${COLOR_NC}"
+    echo ""
+    echo -e "${COLOR_RED}Error Code:${COLOR_NC} ${exit_code}"
+    echo -e "${COLOR_RED}Location:${COLOR_NC} ${BASH_SOURCE[1]:-unknown}:${line_no}"
+    echo -e "${COLOR_RED}Command:${COLOR_NC} ${BASH_COMMAND}"
+    echo ""
+    
+    if [[ "${DEBUG:-false}" == "true" ]]; then
+        echo -e "${COLOR_RED}Stack Trace:${COLOR_NC}"
+        local frame=0
+        while caller $frame 2>/dev/null; do
+            ((frame++))
+        done | while read line func file; do
+            echo -e "  ${file}:${line} ${func}()"
+        done
+        echo ""
+    fi
+    
+    error "Installation aborted due to error"
+    error "Check logs at: ${LOG_DIR:-/var/log/cdn}/"
+    echo ""
+    error "To retry: sudo ${SCRIPT_DIR}/${SCRIPT_NAME} --resume"
+    echo ""
+    
+    # Clean up wizard lock file
+    rm -f "${WIZARD_LOCK_FILE:-/tmp/cdn-wizard.lock}" 2>/dev/null || true
+    
+    exit $exit_code
+}
+
+trap 'error_handler ${LINENO}' ERR
+
+################################################################################
+# PREFLIGHT CHECKS
+################################################################################
+
+preflight_checks() {
+    info "Running preflight checks..."
+    echo ""
+    
+    # Check required directories
+    local -a required_dirs=(
+        "${SCRIPT_DIR}/includes"
+        "${SCRIPT_DIR}/templates"
+    )
+    
+    # Optional directories (will be created if missing)
+    local -a optional_dirs=(
+        "${SCRIPT_DIR}/helpers"
+        "${SCRIPT_DIR}/lib"
+        "${SCRIPT_DIR}/monitoring"
+    )
+    
+    for dir in "${required_dirs[@]}"; do
+        if [[ ! -d "${dir}" ]]; then
+            error "Required directory not found: ${dir}"
+            return 1
+        fi
+        log "✓ Found: ${dir}"
+    done
+    
+    for dir in "${optional_dirs[@]}"; do
+        if [[ -d "${dir}" ]]; then
+            log "✓ Found: ${dir}"
+        else
+            warn "Optional directory not found: ${dir} (will be created if needed)"
+        fi
+    done
+    
+    # Check OS
+    if [[ ! -f /etc/os-release ]]; then
+        error "Cannot detect operating system"
+        return 1
+    fi
+    
+    # shellcheck disable=SC1091
+    source /etc/os-release
+    log "✓ Detected OS: ${ID} ${VERSION_ID}"
+    
+    if [[ "${ID}" != "ubuntu" ]] && [[ "${ID}" != "debian" ]] && [[ "${ID}" != "centos" ]] && [[ "${ID}" != "rhel" ]] && [[ "${ID}" != "fedora" ]]; then
+        warn "OS may not be fully supported: ${ID}"
+        warn "This script is tested on Ubuntu, Debian, CentOS, RHEL, and Fedora"
+        echo ""
+        
+        if ! prompt_confirm "Continue anyway?" "no"; then
+            error "Installation cancelled due to unsupported OS"
+            return 1
+        fi
+    fi
+    
+    # Check required commands
+    local -a required_cmds=("bash" "sed" "awk" "grep" "cat" "mkdir" "chmod" "chown")
+    for cmd in "${required_cmds[@]}"; do
+        if ! command -v "${cmd}" &>/dev/null; then
+            error "Required command not found: ${cmd}"
+            return 1
+        fi
+    done
+    log "✓ All required commands available"
+    
+    # Check if running in a container (informational)
+    if [[ -f /.dockerenv ]] || grep -q 'docker\|lxc' /proc/1/cgroup 2>/dev/null; then
+        warn "Running inside a container detected"
+        warn "Some features may require additional configuration"
+        echo ""
+    fi
+    
+    # Check available disk space
+    local available_space
+    available_space=$(df /srv 2>/dev/null | tail -1 | awk '{print $4}' || echo "0")
+    
+    if [[ ${available_space} -lt 1048576 ]]; then
+        warn "Low disk space detected: $(df -h /srv 2>/dev/null | tail -1 | awk '{print $4}') available"
+        warn "Recommended: at least 1GB free space"
+        echo ""
+    else
+        log "✓ Sufficient disk space available"
+    fi
+    
+    echo ""
+    log "✓ All preflight checks passed"
+    return 0
+}
 
 ################################################################################
 # USAGE
@@ -123,6 +258,12 @@ main() {
     
     # Display banner
     print_banner
+    
+    # Run preflight checks
+    if ! preflight_checks; then
+        error "Preflight checks failed"
+        exit 1
+    fi
     
     # Check if already installed
     if [[ -f "${CONFIG_FILE}" ]] && [[ "${resume_mode}" == "false" ]] && [[ "${unattended_mode}" == "false" ]]; then
