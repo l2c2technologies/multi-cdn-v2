@@ -1,0 +1,326 @@
+; Multi-Tenant CDN - Gitea Configuration Template
+; Location: /home/git/gitea/custom/conf/app.ini
+;
+; INSTRUCTIONS:
+; 1. This file is generated automatically by installation scripts
+; 2. Variables are substituted from /etc/cdn/config.env
+; 3. Manual edits may be overwritten - modify config.env instead
+; 4. Restart Gitea after changes: systemctl restart gitea
+
+[default]
+APP_NAME = Multi-Tenant CDN - Git Portal
+RUN_MODE = prod
+RUN_USER = git
+WORK_PATH = ${GITEA_WORK_DIR}
+
+[repository]
+ROOT = ${GIT_DIR}
+SCRIPT_TYPE = bash
+DEFAULT_BRANCH = ${GIT_DEFAULT_BRANCH}
+DEFAULT_PRIVATE = private
+DEFAULT_PUSH_CREATE_PRIVATE = true
+MAX_CREATION_LIMIT = -1
+MIRROR_QUEUE_LENGTH = 1000
+PULL_REQUEST_QUEUE_LENGTH = 1000
+PREFERRED_LICENSES = MIT,Apache-2.0,GPL-3.0
+DISABLE_HTTP_GIT = false
+ACCESS_CONTROL_ALLOW_ORIGIN =
+USE_COMPAT_SSH_URI = false
+ENABLE_PUSH_CREATE_USER = true
+ENABLE_PUSH_CREATE_ORG = false
+DISABLED_REPO_UNITS =
+DEFAULT_REPO_UNITS = repo.code,repo.releases,repo.issues,repo.pulls,repo.wiki,repo.projects,repo.packages
+PREFIX_ARCHIVE_FILES = true
+DISABLE_MIGRATIONS = false
+DISABLE_STARS = false
+DEFAULT_CLOSE_ISSUES_VIA_COMMITS_IN_ANY_BRANCH = false
+
+[repository.editor]
+LINE_WRAP_EXTENSIONS = .txt,.md,.markdown,.mdown,.mkd,.livemd
+PREVIEWABLE_FILE_MODES = markdown
+
+[repository.local]
+LOCAL_COPY_PATH = ${GITEA_WORK_DIR}/tmp/local-repo
+
+[repository.upload]
+ENABLED = true
+TEMP_PATH = ${GITEA_WORK_DIR}/data/tmp/uploads
+ALLOWED_TYPES =
+FILE_MAX_SIZE = 100
+MAX_FILES = 10
+
+[repository.pull-request]
+WORK_IN_PROGRESS_PREFIXES = WIP:,[WIP]
+DEFAULT_MERGE_STYLE = merge
+DISABLE_AUTO_MERGE = false
+
+[repository.signing]
+SIGNING_KEY = default
+SIGNING_NAME =
+SIGNING_EMAIL =
+INITIAL_COMMIT = always
+CRUD_ACTIONS = pubkey,twofa,parentsigned
+WIKI = never
+MERGES = pubkey,twofa,basesigned,commitssigned
+
+[lfs]
+STORAGE_TYPE = local
+PATH = ${GITEA_WORK_DIR}/data/lfs
+ENABLED = ${GIT_LFS_ENABLED}
+MAX_FILE_SIZE = ${GIT_LFS_MAX_FILE_SIZE}
+
+[server]
+PROTOCOL = http
+DOMAIN = ${GITEA_DOMAIN}
+ROOT_URL = https://${GITEA_DOMAIN}/
+HTTP_ADDR = 127.0.0.1
+HTTP_PORT = ${GITEA_PORT}
+DISABLE_SSH = true
+START_SSH_SERVER = false
+BUILTIN_SSH_SERVER_USER = git
+LFS_START_SERVER = true
+LFS_CONTENT_PATH = ${GITEA_WORK_DIR}/data/lfs
+LFS_JWT_SECRET = ${GITEA_LFS_JWT_SECRET}
+OFFLINE_MODE = false
+APP_DATA_PATH = ${GITEA_WORK_DIR}/data
+ENABLE_GZIP = true
+LANDING_PAGE = explore
+LFS_MAX_FILE_SIZE = ${GIT_LFS_MAX_FILE_SIZE}
+
+[database]
+DB_TYPE = sqlite3
+HOST = 127.0.0.1:3306
+NAME = gitea
+USER = root
+PASSWD =
+SCHEMA =
+SSL_MODE = disable
+PATH = ${GITEA_DB_PATH}
+LOG_SQL = false
+CHARSET = utf8mb4
+MAX_IDLE_CONNS = 2
+MAX_OPEN_CONNS = 0
+CONN_MAX_LIFETIME = 3s
+AUTO_MIGRATION = true
+
+[indexer]
+ISSUE_INDEXER_PATH = ${GITEA_WORK_DIR}/indexers/issues.bleve
+ISSUE_INDEXER_TYPE = bleve
+REPO_INDEXER_ENABLED = true
+REPO_INDEXER_PATH = ${GITEA_WORK_DIR}/indexers/repos.bleve
+REPO_INDEXER_TYPE = bleve
+UPDATE_BUFFER_LEN = 20
+MAX_FILE_SIZE = 1048576
+
+[admin]
+DISABLE_REGULAR_ORG_CREATION = false
+DEFAULT_EMAIL_NOTIFICATIONS = enabled
+
+[security]
+INSTALL_LOCK = true
+SECRET_KEY = ${GITEA_SECRET_KEY}
+INTERNAL_TOKEN = ${GITEA_INTERNAL_TOKEN}
+PASSWORD_HASH_ALGO = pbkdf2
+CSRF_COOKIE_HTTP_ONLY = true
+MIN_PASSWORD_LENGTH = 8
+PASSWORD_COMPLEXITY = lower,upper,digit
+PASSWORD_CHECK_PWN = true
+SUCCESSFUL_TOKENS_CACHE_SIZE = 20
+REVERSE_PROXY_LIMIT = 1
+REVERSE_PROXY_TRUSTED_PROXIES = 127.0.0.0/8,::1/128
+DISABLE_GIT_HOOKS = false
+DISABLE_WEBHOOKS = false
+
+[oauth2]
+ENABLE = true
+ACCESS_TOKEN_EXPIRATION_TIME = 3600
+REFRESH_TOKEN_EXPIRATION_TIME = 730
+INVALIDATE_REFRESH_TOKENS = false
+JWT_SECRET = ${GITEA_JWT_SECRET}
+JWT_SIGNING_ALGORITHM = HS256
+MAX_TOKEN_LENGTH = 32767
+
+[service]
+DISABLE_REGISTRATION = true
+REQUIRE_SIGNIN_VIEW = false
+REGISTER_EMAIL_CONFIRM = false
+ENABLE_NOTIFY_MAIL = true
+ALLOW_ONLY_EXTERNAL_REGISTRATION = false
+ENABLE_CAPTCHA = false
+DEFAULT_KEEP_EMAIL_PRIVATE = true
+DEFAULT_ALLOW_CREATE_ORGANIZATION = false
+DEFAULT_ENABLE_TIMETRACKING = true
+DEFAULT_ALLOW_ONLY_CONTRIBUTORS_TO_TRACK_TIME = true
+NO_REPLY_ADDRESS = noreply.${GITEA_DOMAIN}
+ENABLE_USER_HEATMAP = true
+ENABLE_TIMETRACKING = true
+DEFAULT_USER_VISIBILITY = private
+ALLOWED_USER_VISIBILITY_MODES = private,limited,public
+DEFAULT_ORG_VISIBILITY = private
+DEFAULT_ORG_MEMBER_VISIBLE = false
+ALLOW_GRACEFUL_RESTARTS = true
+GRACEFUL_HAMMER_TIME = 60s
+STARTUP_TIMEOUT = 0
+STATIC_URL_PREFIX =
+
+[service.explore]
+REQUIRE_SIGNIN_VIEW = false
+DISABLE_USERS_PAGE = false
+
+[mailer]
+ENABLED = ${SMTP_ENABLED}
+FROM = ${SMTP_FROM}
+MAILER_TYPE = smtp
+HOST = ${SMTP_HOST}:${SMTP_PORT}
+IS_TLS_ENABLED = ${SMTP_TLS}
+USER = ${SMTP_USER}
+PASSWD = ${SMTP_PASS}
+SKIP_VERIFY = false
+USE_CERTIFICATE = false
+CERT_FILE =
+KEY_FILE =
+SUBJECT_PREFIX =
+SENDMAIL_PATH = sendmail
+SENDMAIL_ARGS =
+SENDMAIL_TIMEOUT = 5m
+SEND_BUFFER_LEN = 100
+
+[cache]
+ADAPTER = memory
+INTERVAL = 60
+HOST =
+ITEM_TTL = 16h
+
+[session]
+PROVIDER = file
+PROVIDER_CONFIG = ${GITEA_WORK_DIR}/data/sessions
+COOKIE_SECURE = true
+COOKIE_NAME = i_like_gitea
+GC_INTERVAL_TIME = 86400
+SESSION_LIFE_TIME = 86400
+DOMAIN = ${GITEA_DOMAIN}
+SAME_SITE = lax
+
+[picture]
+AVATAR_UPLOAD_PATH = ${GITEA_WORK_DIR}/data/avatars
+REPOSITORY_AVATAR_UPLOAD_PATH = ${GITEA_WORK_DIR}/data/repo-avatars
+DISABLE_GRAVATAR = false
+ENABLE_FEDERATED_AVATAR = true
+AVATAR_MAX_WIDTH = 4096
+AVATAR_MAX_HEIGHT = 4096
+
+[attachment]
+ENABLED = true
+ALLOWED_TYPES = .csv,.docx,.fodg,.fodp,.fods,.fodt,.gif,.gz,.jpeg,.jpg,.log,.md,.mov,.mp4,.odf,.odg,.odp,.ods,.odt,.patch,.pdf,.png,.pptx,.svg,.tgz,.txt,.webm,.xls,.xlsx,.zip
+MAX_SIZE = 100
+MAX_FILES = 10
+STORAGE_TYPE = local
+PATH = ${GITEA_WORK_DIR}/data/attachments
+
+[time]
+FORMAT = RFC1123
+DEFAULT_UI_LOCATION = America/New_York
+
+[log]
+MODE = console,file
+LEVEL = Info
+ROOT_PATH = ${LOG_DIR}/gitea
+ROUTER = console
+
+[log.console]
+LEVEL = Info
+STDERR = false
+
+[log.file]
+LEVEL = Info
+FILE_NAME = gitea.log
+LOG_ROTATE = true
+MAX_SIZE_SHIFT = 28
+DAILY_ROTATE = true
+MAX_DAYS = 90
+COMPRESS = true
+COMPRESSION_LEVEL = -1
+
+[git]
+PATH =
+DISABLE_DIFF_HIGHLIGHT = false
+MAX_GIT_DIFF_LINES = 1000
+MAX_GIT_DIFF_LINE_CHARACTERS = 5000
+MAX_GIT_DIFF_FILES = 100
+COMMITS_RANGE_SIZE = 50
+BRANCHES_RANGE_SIZE = 20
+GC_ARGS =
+ENABLE_AUTO_GIT_WIRE_PROTOCOL = true
+PULL_REQUEST_PUSH_MESSAGE = true
+VERBOSE_PUSH = true
+VERBOSE_PUSH_DELAY = 5s
+LARGE_OBJECT_THRESHOLD = 1048576
+DISABLE_CORE_PROTECT_NTFS = false
+TIMEOUT_DEFAULT = 360
+TIMEOUT_MIGRATE = 600
+TIMEOUT_MIRROR = 300
+TIMEOUT_CLONE = 300
+TIMEOUT_PULL = 300
+TIMEOUT_GC = 60
+
+[mirror]
+DEFAULT_INTERVAL = 8h
+MIN_INTERVAL = 10m
+DISABLE_NEW_PULL = false
+DISABLE_NEW_PUSH = false
+
+[api]
+ENABLE_SWAGGER = false
+MAX_RESPONSE_ITEMS = 50
+DEFAULT_PAGING_NUM = 30
+DEFAULT_GIT_TREES_PER_PAGE = 1000
+DEFAULT_MAX_BLOB_SIZE = 10485760
+DEFAULT_MAX_WEBHOOK_DELIVERY_RESULTS = 100
+DEFAULT_MAX_WEBHOOKS_PER_USER = 10
+DEFAULT_MAX_WEBHOOKS_PER_ORG = 10
+
+[i18n]
+LANGS = en-US,zh-CN,zh-HK,zh-TW,de-DE,fr-FR,nl-NL,lv-LV,ru-RU,uk-UA,ja-JP,es-ES,pt-BR,pt-PT,pl-PL,bg-BG,it-IT,fi-FI,tr-TR,cs-CZ,sv-SE,ko-KR,el-GR,fa-IR,hu-HU,id-ID,ml-IN
+NAMES = English,简体中文,繁體中文(香港),繁體中文(台灣),Deutsch,Français,Nederlands,Latviešu,Русский,Українська,日本語,Español,Português do Brasil,Português de Portugal,Polski,Български,Italiano,Suomi,Türkçe,Čeština,Српски,Svenska,한국어,Ελληνικά,فارسی,Magyar nyelv,Bahasa Indonesia,മലയാളം
+
+[highlight.mapping]
+
+[other]
+SHOW_FOOTER_BRANDING = false
+SHOW_FOOTER_VERSION = true
+SHOW_FOOTER_TEMPLATE_LOAD_TIME = true
+
+[markup]
+MERMAID_MAX_SOURCE_CHARACTERS = 5000
+
+[metrics]
+ENABLED = false
+TOKEN =
+
+[task]
+QUEUE_TYPE = channel
+QUEUE_LENGTH = 1000
+QUEUE_CONN_STR =
+
+[migrations]
+MAX_ATTEMPTS = 3
+RETRY_BACKOFF = 3
+
+[federation]
+ENABLED = false
+
+[packages]
+ENABLED = true
+CHUNKED_UPLOAD_PATH = ${GITEA_WORK_DIR}/data/tmp/package-upload
+
+[actions]
+ENABLED = false
+
+[webhook]
+QUEUE_LENGTH = 1000
+DELIVER_TIMEOUT = 5s
+SKIP_TLS_VERIFY = false
+ALLOWED_HOST_LIST = *
+PAGING_NUM = 10
+PROXY_URL =
+PROXY_HOSTS =
