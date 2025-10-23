@@ -1,155 +1,75 @@
 ################################################################################
-# msmtp SMTP Relay Configuration Template
-# Location: /etc/msmtprc (system-wide) or ~/.msmtprc (user-specific)
-#
-# INSTRUCTIONS:
-# 1. This file is generated from /etc/cdn/config.env
-# 2. System-wide config: /etc/msmtprc (owned by root, mode 644)
-# 3. Sensitive config: ~/.msmtprc (owned by user, mode 600)
-# 4. Test with: echo "Test message" | mail -s "Test" user@example.com
-# 5. View log: tail -f /var/log/msmtp.log
-#
-# SECURITY NOTES:
-# - Store passwords in user-specific ~/.msmtprc with mode 600
-# - Use application-specific passwords for Gmail/corporate accounts
-# - Consider using passwordeval for additional security
+# msmtp Configuration Template
+# Multi-Tenant CDN System
 ################################################################################
 
-# Default account settings
 defaults
-auth           on
-tls            ${SMTP_TLS}
+logfile /var/log/msmtp.log
+tls on
 tls_trust_file /etc/ssl/certs/ca-certificates.crt
-logfile        /var/log/msmtp.log
-
-# Account: CDN System Alerts
-account        cdn-system
-host           ${SMTP_HOST}
-port           ${SMTP_PORT}
-from           ${SMTP_FROM}
-user           ${SMTP_USER}
-password       ${SMTP_PASS}
-
-# Set default account
-account default : cdn-system
+tls_certcheck on
+tls_min_version TLSv1.2
 
 ################################################################################
-# PROVIDER-SPECIFIC EXAMPLES (commented out)
+# Gmail Account (Example - Default)
 ################################################################################
-
-# --- Gmail ---
-# account        gmail
-# host           smtp.gmail.com
-# port           587
-# from           your-email@gmail.com
-# user           your-email@gmail.com
-# password       your-app-specific-password
-# tls            on
-# tls_starttls   on
-
-# --- SendGrid ---
-# account        sendgrid
-# host           smtp.sendgrid.net
-# port           587
-# from           noreply@yourdomain.com
-# user           apikey
-# password       SG.YOUR_API_KEY_HERE
-# tls            on
-# tls_starttls   on
-
-# --- AWS SES ---
-# account        ses
-# host           email-smtp.us-east-1.amazonaws.com
-# port           587
-# from           noreply@yourdomain.com
-# user           YOUR_SMTP_USERNAME
-# password       YOUR_SMTP_PASSWORD
-# tls            on
-# tls_starttls   on
-
-# --- Microsoft 365 / Outlook.com ---
-# account        outlook
-# host           smtp.office365.com
-# port           587
-# from           your-email@outlook.com
-# user           your-email@outlook.com
-# password       your-password
-# tls            on
-# tls_starttls   on
-
-# --- Mailgun ---
-# account        mailgun
-# host           smtp.mailgun.org
-# port           587
-# from           noreply@yourdomain.com
-# user           postmaster@yourdomain.com
-# password       your-mailgun-smtp-password
-# tls            on
-# tls_starttls   on
+account gmail
+host smtp.gmail.com
+port 587
+from cdn-system@example.com
+user your-email@gmail.com
+password your-app-password
+auth plain
+tls_starttls on
 
 ################################################################################
-# ADVANCED OPTIONS
+# Office365 Account (Alternative)
 ################################################################################
-
-# Use system keyring for password storage (requires libsecret)
-# passwordeval   secret-tool lookup msmtp account cdn-system
-
-# Per-user authentication (if msmtprc is in home directory)
-# auth           on
-# user           %U@example.com
-# from           %U@example.com
-
-# Disable certificate verification (NOT recommended for production)
-# tls_certcheck  off
-
-# Use specific TLS version
-# tls_min_dh_prime_bits 1024
-
-# SOCKS proxy support
-# proxy_host     127.0.0.1
-# proxy_port     1080
-
-# Additional logging
-# syslog         on
-# syslog_facility LOG_MAIL
+# account office365
+# host smtp.office365.com
+# port 587
+# from noreply@yourdomain.com
+# user your-email@yourdomain.com
+# password your-password
+# auth login
+# tls_starttls on
 
 ################################################################################
-# ALIASES (for mail command compatibility)
+# SendGrid Account (Alternative)
 ################################################################################
-# Create /etc/aliases or ~/.mail-aliases:
-# 
-# root: admin@example.com
-# alerts: ${ALERT_EMAIL}
-# cdn-admin: ${ALERT_EMAIL}
-# postmaster: ${ALERT_EMAIL}
+# account sendgrid
+# host smtp.sendgrid.net
+# port 587
+# from noreply@yourdomain.com
+# user apikey
+# password YOUR_SENDGRID_API_KEY
+# auth plain
+# tls_starttls on
 
 ################################################################################
-# TESTING AND TROUBLESHOOTING
+# AWS SES Account (Alternative)
 ################################################################################
-#
-# Test basic connectivity:
-#   msmtp --serverinfo --host=${SMTP_HOST} --port=${SMTP_PORT} --tls=on
-#
-# Test authentication:
-#   msmtp --host=${SMTP_HOST} --port=${SMTP_PORT} --user=${SMTP_USER} \
-#         --passwordeval="echo '${SMTP_PASS}'" --tls=on --auth=on -t
-#
-# Send test email:
-#   echo "Test message body" | msmtp -a cdn-system recipient@example.com
-#
-# Send test with mail command:
-#   echo "Test from mail command" | mail -s "Test Subject" recipient@example.com
-#
-# View logs:
-#   tail -f /var/log/msmtp.log
-#
-# Enable debug mode (temporary):
-#   echo "Test" | msmtp -d recipient@example.com
-#
-# Common errors:
-#   - "cannot connect to host": Check firewall, DNS, host/port settings
-#   - "authentication failed": Verify credentials, may need app password
-#   - "certificate verify failed": Update ca-certificates or set tls_certcheck off
-#   - "relay access denied": Check from/user settings, may need authentication
-#
+# account aws-ses
+# host email-smtp.us-east-1.amazonaws.com
+# port 587
+# from noreply@yourdomain.com
+# user YOUR_SMTP_USERNAME
+# password YOUR_SMTP_PASSWORD
+# auth plain
+# tls_starttls on
+
+################################################################################
+# Default Account
+################################################################################
+account default : gmail
+
+################################################################################
+# Authentication Method Reference
+################################################################################
+# auth plain     - Standard username/password (most common)
+# auth login     - Microsoft-style authentication (Office365)
+# auth cram-md5  - Challenge-response authentication (more secure)
+# auth gssapi    - Kerberos authentication
+# auth external  - External authentication mechanism
+# auth ntlm      - Windows NTLM authentication
 ################################################################################
