@@ -1,0 +1,118 @@
+################################################################################
+# Systemd Service Unit: Per-Tenant Quota Monitoring
+# Multi-Tenant CDN System
+#
+# Real-time quota monitoring via inotify on SFTP and Nginx directories
+# Git repository usage is NOT tracked for individual users
+#
+# Installation: /etc/systemd/system/cdn-quota-monitor@.service
+# Usage: systemctl enable cdn-quota-monitor@<tenant-name>
+################################################################################
+
+[Unit]
+Description=CDN Quota Monitor for %i
+Documentation=https://github.com/l2c2technologies/multi-cdn-v2
+After=network.target local-fs.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/root
+
+Environment="TENANT=%i"
+Environment="SFTP_DIR=/srv/cdn/sftp"
+Environment="NGINX_DIR=/srv/cdn/www"
+Environment="LOG_DIR=/var/log/cdn"
+Environment="DEFAULT_QUOTA_MB=5120"
+Environment="QUOTA_WARN_THRESHOLD_1=70"
+Environment="QUOTA_WARN_THRESHOLD_2=80"
+Environment="QUOTA_WARN_THRESHOLD_3=90"
+Environment="QUOTA_CHECK_INTERVAL=30"
+Environment="QUOTA_ENFORCEMENT=block"
+Environment="SMTP_ENABLED=true"
+Environment="SMTP_FROM=cdn-system@example.com"
+Environment="ALERT_EMAIL=admin@example.com"
+Environment="CDN_DOMAIN=cdn.example.com"
+
+ExecStart=/opt/scripts/cdn/monitoring/cdn-quota-monitor-realtime.sh %i
+
+ExecStartPre=/bin/sh -c 'test -d /srv/cdn/sftp/%i || exit 1'
+ExecStartPre=/bin/sh -c 'test -d /srv/cdn/www/%i || exit 1'
+
+Restart=on-failure
+RestartSec=10s
+StartLimitBurst=10
+StartLimitIntervalSec=1800
+
+TimeoutStartSec=60s
+TimeoutStopSec=30s
+
+KillMode=mixed
+KillSignal=SIGTERM
+FinalKillSignal=SIGKILL
+
+# Security Hardening
+NoNewPrivileges=false
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=false
+ReadWritePaths=/srv/cdn/sftp/%i /srv/cdn/www/%i /var/log/cdn /tmp
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+SystemCallFilter=@system-service @file-system @io-event @ipc
+SystemCallFilter=~@obsolete @raw-io
+SystemCallErrorNumber=EPERM
+DevicePolicy=closed
+DeviceAllow=/dev/null rw
+
+# Resource Limits
+CPUQuota=5%
+CPUWeight=20
+MemoryMax=512M
+MemoryHigh=384M
+MemorySwapMax=256M
+TasksMax=20
+LimitNOFILE=8192
+LimitNPROC=20
+LimitCORE=0
+LimitDATA=512M
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cdn-quota-%i
+SyslogLevel=info
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=100
+
+# Process Priority
+Nice=15
+IOSchedulingClass=idle
+IOSchedulingPriority=7
+
+# Watchdog
+WatchdogSec=180s
+FailureAction=restart
+
+# Notification
+NotifyAccess=main
+
+# Security Hardening (Additional)
+ProtectProc=invisible
+ProcSubset=pid
+ProtectHostname=true
+ProtectClock=true
+
+# OOM Handling
+OOMScoreAdjust=500
+
+[Install]
+WantedBy=multi-user.target
