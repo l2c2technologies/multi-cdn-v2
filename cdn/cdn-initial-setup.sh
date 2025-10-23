@@ -1,9 +1,21 @@
 #!/bin/bash
 ################################################################################
-# Multi-Tenant CDN System - Initial Setup Script
-# Version: 2.0.0
+# Multi-Tenant CDN System - Initial Setup Script (ENHANCED)
+# Version: 2.0.1
 # Location: /opt/scripts/cdn/cdn-initial-setup.sh
 # Purpose: Main entry point for CDN system installation with interactive wizard
+#
+# ENHANCEMENTS v2.0.1:
+# - SMTP test email with confirmation
+# - SSH chroot SFTP configuration
+# - Explicit msmtp.log creation
+# - Gitea admin user creation via CLI
+# - Git safe.directory configuration (fixes dubious ownership)
+# - Gitea service startup verification
+# - Nginx default site removal
+# - Explicit nginx cache directory creation
+# - Nginx reload after configuration
+# - Enhanced logging throughout
 ################################################################################
 
 set -eEuo pipefail
@@ -14,7 +26,7 @@ set -eEuo pipefail
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
-readonly VERSION="2.0.0"
+readonly VERSION="2.0.1"
 
 ################################################################################
 # SOURCE DEPENDENCIES
@@ -310,6 +322,7 @@ The system will now proceed with installation:
 • Install system dependencies
 • Create directory structure
 • Configure system users and groups
+• Configure SSH chroot SFTP
 • Install and configure Gitea
 • Configure Nginx
 • Request SSL certificates
@@ -346,7 +359,7 @@ print_banner() {
     echo -e "${COLOR_BLUE}╔════════════════════════════════════════════════════════════════════════════╗${COLOR_NC}"
     echo -e "${COLOR_BLUE}║${COLOR_NC}                                                                            ${COLOR_BLUE}║${COLOR_NC}"
     echo -e "${COLOR_BLUE}║${COLOR_NC}             ${COLOR_GREEN}Multi-Tenant CDN System - Initial Setup${COLOR_NC}                ${COLOR_BLUE}║${COLOR_NC}"
-    echo -e "${COLOR_BLUE}║${COLOR_NC}                          Version ${VERSION}                                ${COLOR_BLUE}║${COLOR_NC}"
+    echo -e "${COLOR_BLUE}║${COLOR_NC}                          Version ${VERSION}                              ${COLOR_BLUE}║${COLOR_NC}"
     echo -e "${COLOR_BLUE}║${COLOR_NC}                                                                            ${COLOR_BLUE}║${COLOR_NC}"
     echo -e "${COLOR_BLUE}╚════════════════════════════════════════════════════════════════════════════╝${COLOR_NC}"
     echo ""
@@ -355,7 +368,7 @@ print_banner() {
 }
 
 ################################################################################
-# INTERACTIVE WIZARD
+# INTERACTIVE WIZARD - CONTINUED IN NEXT PART
 ################################################################################
 
 run_interactive_wizard() {
@@ -493,10 +506,6 @@ run_interactive_wizard() {
     log "✓ Interactive wizard completed successfully"
 }
 
-################################################################################
-# UNATTENDED SETUP
-################################################################################
-
 run_unattended_setup() {
     info "Loading configuration from environment variables..."
     
@@ -529,10 +538,6 @@ run_unattended_setup() {
     
     log "✓ Unattended configuration complete"
 }
-
-################################################################################
-# FINALIZE CONFIGURATION
-################################################################################
 
 finalize_configuration() {
     info "Finalizing configuration files..."
@@ -575,10 +580,6 @@ finalize_configuration() {
     
     log "✓ Configuration finalized"
 }
-
-################################################################################
-# GENERATE CONFIG FROM STATE
-################################################################################
 
 generate_config_from_state() {
     info "Generating config.env from wizard state..."
@@ -643,10 +644,6 @@ generate_config_from_state() {
     return 0
 }
 
-################################################################################
-# RUN INSTALLATION
-################################################################################
-
 run_installation() {
     info "Starting CDN system installation..."
     echo ""
@@ -661,6 +658,7 @@ run_installation() {
     install_dependencies
     create_directory_structure
     create_system_users
+    configure_ssh_chroot_sftp  # NEW: SSH chroot configuration
     install_gitea
     configure_nginx
     setup_ssl_certificates
@@ -672,11 +670,12 @@ run_installation() {
 }
 
 ################################################################################
-# INSTALLATION STEPS
+# INSTALLATION FUNCTIONS START HERE
 ################################################################################
 
 install_dependencies() {
     info "Installing system dependencies..."
+    echo ""
     
     # Detect OS
     if [[ -f /etc/os-release ]]; then
@@ -715,7 +714,10 @@ install_dependencies() {
                 wget \
                 ca-certificates \
                 gnupg \
+                rsync \
                 || error "Failed to install packages"
+            
+            log "✓ All packages installed successfully"
             ;;
         
         centos|rhel|fedora)
@@ -732,7 +734,10 @@ install_dependencies() {
                 curl \
                 wget \
                 ca-certificates \
+                rsync \
                 || error "Failed to install packages"
+            
+            log "✓ All packages installed successfully"
             ;;
         
         *)
@@ -742,10 +747,12 @@ install_dependencies() {
     esac
     
     log "✓ Dependencies installed"
+    echo ""
 }
 
 create_directory_structure() {
     info "Creating directory structure..."
+    echo ""
     
     # Create base directories
     local -a directories=(
@@ -762,9 +769,9 @@ create_directory_structure() {
     for dir in "${directories[@]}"; do
         if [[ ! -d "${dir}" ]]; then
             mkdir -p "${dir}"
-            log "Created: ${dir}"
+            log "✓ Created: ${dir}"
         else
-            log "Exists: ${dir}"
+            log "✓ Exists: ${dir}"
         fi
     done
     
@@ -774,72 +781,180 @@ create_directory_structure() {
     chmod 755 "${CACHE_DIR}"
     
     log "✓ Directory structure created"
+    echo ""
 }
 
 create_system_users() {
     info "Creating system users and groups..."
+    echo ""
     
-    # Create CDN group
+    # Create CDN group (for chroot SFTP)
     if ! getent group "${CDN_GROUP}" &>/dev/null; then
         groupadd "${CDN_GROUP}"
-        log "Created group: ${CDN_GROUP}"
+        log "✓ Created group: ${CDN_GROUP}"
     else
-        log "Group exists: ${CDN_GROUP}"
+        log "✓ Group exists: ${CDN_GROUP}"
     fi
     
     # Create git user for Gitea
     if ! id -u "${GITEA_USER}" &>/dev/null; then
         useradd -r -m -d /home/git -s /bin/bash -c "Gitea User" "${GITEA_USER}"
-        log "Created user: ${GITEA_USER}"
+        log "✓ Created user: ${GITEA_USER}"
     else
-        log "User exists: ${GITEA_USER}"
+        log "✓ User exists: ${GITEA_USER}"
     fi
     
-    log "✓ System users created"
+    log "✓ System users and groups created"
+    echo ""
+}
+
+configure_ssh_chroot_sftp() {
+    info "Configuring SSH chroot SFTP..."
+    echo ""
+    
+    local sshd_config="/etc/ssh/sshd_config"
+    local sshd_backup="${sshd_config}.backup-$(date +%Y%m%d-%H%M%S)"
+    
+    # Backup SSH config
+    if [[ -f "${sshd_config}" ]]; then
+        cp "${sshd_config}" "${sshd_backup}"
+        log "✓ Backed up SSH config: ${sshd_backup}"
+    else
+        error "SSH config not found: ${sshd_config}"
+        return 1
+    fi
+    
+    # Check if chroot configuration already exists
+    if grep -q "Match Group ${CDN_GROUP}" "${sshd_config}"; then
+        log "✓ SSH chroot configuration already exists"
+    else
+        log "Adding chroot SFTP configuration to ${sshd_config}..."
+        
+        # Append chroot configuration
+        cat >> "${sshd_config}" << EOF
+
+################################################################################
+# Multi-Tenant CDN - Chroot SFTP Configuration
+# Added by cdn-initial-setup.sh on $(date)
+################################################################################
+
+Match Group ${CDN_GROUP}
+    ChrootDirectory %h
+    ForceCommand internal-sftp
+    AllowTcpForwarding no
+    X11Forwarding no
+    PasswordAuthentication no
+    PubkeyAuthentication yes
+EOF
+        
+        log "✓ Added chroot SFTP configuration"
+    fi
+    
+    # Test SSH configuration
+    log "Testing SSH configuration..."
+    if sshd -t 2>/dev/null; then
+        log "✓ SSH configuration is valid"
+    else
+        error "SSH configuration test failed!"
+        error "Output:"
+        sshd -t
+        error "Restoring backup..."
+        mv "${sshd_backup}" "${sshd_config}"
+        return 1
+    fi
+    
+    # Restart SSH service
+    log "Restarting SSH service..."
+    if systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null; then
+        log "✓ SSH service restarted successfully"
+    else
+        error "Failed to restart SSH service"
+        error "Restoring backup..."
+        mv "${sshd_backup}" "${sshd_config}"
+        return 1
+    fi
+    
+    # Verify SSH is still running
+    sleep 2
+    if systemctl is-active sshd &>/dev/null || systemctl is-active ssh &>/dev/null; then
+        log "✓ SSH service is active and running"
+    else
+        error "SSH service is not running after restart!"
+        error "This is critical - SSH access may be broken"
+        error "Manual intervention required"
+        return 1
+    fi
+    
+    log "✓ SSH chroot SFTP configured successfully"
+    echo ""
 }
 
 install_gitea() {
     info "Installing Gitea..."
+    echo ""
+    
+    # Ensure git user exists
+    if ! id -u "${GITEA_USER}" &>/dev/null; then
+        warn "Git user not found, creating..."
+        useradd -r -m -d /home/git -s /bin/bash -c "Gitea User" "${GITEA_USER}"
+        log "✓ Created git user"
+    else
+        log "✓ Git user exists"
+    fi
     
     # Download Gitea binary
     local gitea_url="https://dl.gitea.io/gitea/${GITEA_VERSION}/gitea-${GITEA_VERSION}-linux-amd64"
     
     if [[ ! -f "/usr/local/bin/gitea" ]]; then
         log "Downloading Gitea ${GITEA_VERSION}..."
+        log "URL: ${gitea_url}"
         
         if ! curl -fsSL "${gitea_url}" -o /usr/local/bin/gitea; then
-            error "Failed to download Gitea"
+            error "Failed to download Gitea from ${gitea_url}"
+            return 1
+        fi
+        
+        # Verify download
+        if [[ ! -f "/usr/local/bin/gitea" ]]; then
+            error "Gitea binary not found after download"
             return 1
         fi
         
         chmod +x /usr/local/bin/gitea
-        log "✓ Gitea binary installed"
+        log "✓ Gitea binary downloaded and installed"
     else
-        log "Gitea binary already installed"
+        log "✓ Gitea binary already installed"
     fi
     
     # Create Gitea directories
+    log "Creating Gitea directory structure..."
     mkdir -p /home/git/gitea/{custom,data,log}
     mkdir -p /home/git/gitea/custom/conf
+    log "✓ Created Gitea directories"
     
     # Process Gitea configuration template
     local gitea_template="${TEMPLATE_DIR}/gitea-app.ini.template"
     local gitea_config="/home/git/gitea/custom/conf/app.ini"
     
     if [[ -f "${gitea_template}" ]]; then
+        log "Processing Gitea configuration template..."
         export GITEA_DOMAIN GITEA_SECRET_KEY GITEA_INTERNAL_TOKEN GITEA_JWT_SECRET
         export SMTP_HOST SMTP_PORT SMTP_USER SMTP_PASS SMTP_FROM
         export GIT_DIR
         
         envsubst < "${gitea_template}" > "${gitea_config}"
-        chmod 600 "${gitea_config}"
+        chmod 640 "${gitea_config}"
         log "✓ Gitea configuration created"
+    else
+        warn "Gitea template not found: ${gitea_template}"
     fi
     
     # Set ownership
     chown -R "${GITEA_USER}:${GITEA_USER}" /home/git/
+    log "✓ Set ownership on Gitea directories"
     
     # Create Gitea systemd service
+    log "Creating Gitea systemd service..."
     cat > /etc/systemd/system/gitea.service << 'EOF'
 [Unit]
 Description=Gitea (Git with a cup of tea)
@@ -860,14 +975,90 @@ Environment=USER=git HOME=/home/git GITEA_WORK_DIR=/home/git/gitea
 WantedBy=multi-user.target
 EOF
     
+    log "✓ Created Gitea systemd service"
+    
+    # Configure Git safe.directory (CRITICAL FOR FIXING DUBIOUS OWNERSHIP)
+    log "Configuring Git safe.directory to prevent 'dubious ownership' errors..."
+    sudo -u git git config --global safe.directory '*'
+    log "✓ Git safe.directory configured globally for git user"
+    
+    # Reload systemd and enable Gitea
     systemctl daemon-reload
     systemctl enable gitea
+    log "✓ Gitea service enabled"
     
-    log "✓ Gitea installed and configured"
+    # Start Gitea service
+    log "Starting Gitea service..."
+    if systemctl start gitea; then
+        log "✓ Gitea service started"
+    else
+        error "Failed to start Gitea service"
+        error "Check logs with: journalctl -xe -u gitea"
+        return 1
+    fi
+    
+    # Wait for Gitea to be ready
+    log "Waiting for Gitea to initialize (10 seconds)..."
+    sleep 10
+    
+    # Verify Gitea is running
+    if systemctl is-active gitea &>/dev/null; then
+        log "✓ Gitea service is active and running"
+    else
+        error "Gitea service failed to start properly"
+        error "Service status:"
+        systemctl status gitea --no-pager
+        error "Recent logs:"
+        journalctl -u gitea -n 50 --no-pager
+        return 1
+    fi
+    
+    # Create Gitea admin user via CLI
+    log "Creating Gitea admin user: ${GITEA_ADMIN_USER}..."
+    
+    if sudo -u git /usr/local/bin/gitea admin user create \
+        --username "${GITEA_ADMIN_USER}" \
+        --password "${GITEA_ADMIN_PASS}" \
+        --email "${GITEA_ADMIN_EMAIL}" \
+        --admin \
+        --config /home/git/gitea/custom/conf/app.ini 2>&1 | grep -v "password"; then
+        log "✓ Gitea admin user created: ${GITEA_ADMIN_USER}"
+    else
+        warn "Failed to create Gitea admin user (may already exist)"
+        log "You can create it manually later or use existing credentials"
+    fi
+    
+    log "✓ Gitea installed and configured successfully"
+    echo ""
 }
 
 configure_nginx() {
     info "Configuring Nginx..."
+    echo ""
+    
+    # Remove default nginx site
+    log "Removing default Nginx site..."
+    if [[ -L /etc/nginx/sites-enabled/default ]]; then
+        rm -f /etc/nginx/sites-enabled/default
+        log "✓ Removed default site symlink"
+    fi
+    if [[ -f /etc/nginx/sites-available/default ]]; then
+        log "  Default site config still exists in sites-available (preserved)"
+    fi
+    
+    # Create nginx cache directory explicitly
+    log "Creating Nginx cache directory..."
+    if [[ ! -d "${CACHE_DIR}" ]]; then
+        mkdir -p "${CACHE_DIR}"
+        log "✓ Created: ${CACHE_DIR}"
+    else
+        log "✓ Cache directory exists: ${CACHE_DIR}"
+    fi
+    
+    # Set ownership on cache directory
+    chown -R "${NGINX_USER}:${NGINX_USER}" "${CACHE_DIR}"
+    chmod 755 "${CACHE_DIR}"
+    log "✓ Set ownership: ${NGINX_USER}:${NGINX_USER} on ${CACHE_DIR}"
     
     # Process nginx templates
     local cdn_template="${TEMPLATE_DIR}/nginx/nginx-cdn.conf.template"
@@ -876,44 +1067,75 @@ configure_nginx() {
     export CDN_DOMAIN GITEA_DOMAIN NGINX_DIR CACHE_SIZE
     
     if [[ -f "${cdn_template}" ]]; then
+        log "Processing CDN nginx template..."
         envsubst < "${cdn_template}" > /etc/nginx/sites-available/cdn.conf
         log "✓ CDN nginx config created"
-    fi
-    
-    if [[ -f "${gitea_template}" ]]; then
-        envsubst < "${gitea_template}" > /etc/nginx/sites-available/gitea.conf
-        log "✓ Gitea nginx config created"
-    fi
-    
-    # Enable sites
-    ln -sf /etc/nginx/sites-available/cdn.conf /etc/nginx/sites-enabled/
-    ln -sf /etc/nginx/sites-available/gitea.conf /etc/nginx/sites-enabled/
-    
-    # Generate DH parameters
-    if [[ ! -f /etc/nginx/dhparam.pem ]]; then
-        log "Generating DH parameters (this may take a few minutes)..."
-        openssl dhparam -out /etc/nginx/dhparam.pem 2048
-    fi
-    
-    # Test nginx configuration
-    if nginx -t; then
-        log "✓ Nginx configuration valid"
     else
-        error "Nginx configuration test failed"
+        error "CDN nginx template not found: ${cdn_template}"
         return 1
     fi
     
-    log "✓ Nginx configured"
+    if [[ -f "${gitea_template}" ]]; then
+        log "Processing Gitea nginx template..."
+        envsubst < "${gitea_template}" > /etc/nginx/sites-available/gitea.conf
+        log "✓ Gitea nginx config created"
+    else
+        error "Gitea nginx template not found: ${gitea_template}"
+        return 1
+    fi
+    
+    # Enable sites
+    log "Enabling CDN and Gitea sites..."
+    ln -sf /etc/nginx/sites-available/cdn.conf /etc/nginx/sites-enabled/
+    ln -sf /etc/nginx/sites-available/gitea.conf /etc/nginx/sites-enabled/
+    log "✓ Sites enabled"
+    
+    # Generate DH parameters if not exists
+    if [[ ! -f /etc/nginx/dhparam.pem ]]; then
+        log "Generating DH parameters (this may take a few minutes)..."
+        openssl dhparam -out /etc/nginx/dhparam.pem 2048
+        log "✓ DH parameters generated"
+    else
+        log "✓ DH parameters already exist"
+    fi
+    
+    # Test nginx configuration
+    log "Testing Nginx configuration..."
+    if nginx -t 2>&1 | tee /tmp/nginx-test.log; then
+        log "✓ Nginx configuration is valid"
+    else
+        error "Nginx configuration test failed!"
+        error "Output:"
+        cat /tmp/nginx-test.log
+        return 1
+    fi
+    
+    # Reload nginx
+    log "Reloading Nginx..."
+    if systemctl reload nginx; then
+        log "✓ Nginx reloaded successfully"
+    else
+        error "Failed to reload Nginx"
+        systemctl status nginx --no-pager
+        return 1
+    fi
+    
+    log "✓ Nginx configured successfully"
+    echo ""
 }
 
 setup_ssl_certificates() {
     info "Setting up SSL certificates..."
+    echo ""
     
     if [[ "${SSL_MODE}" == "letsencrypt" ]]; then
         log "Requesting Let's Encrypt certificates..."
         
         # Start nginx to allow ACME challenge
-        systemctl restart nginx
+        if ! systemctl is-active nginx &>/dev/null; then
+            systemctl start nginx
+            log "✓ Started Nginx for ACME challenge"
+        fi
         
         # Request certificates
         local certbot_email_flag=""
@@ -924,25 +1146,29 @@ setup_ssl_certificates() {
         fi
         
         # Request CDN certificate
-        if ! certbot certonly --nginx \
+        log "Requesting certificate for ${CDN_DOMAIN}..."
+        if certbot certonly --nginx \
             ${certbot_email_flag} \
             --agree-tos \
             --non-interactive \
-            -d "${CDN_DOMAIN}"; then
-            warn "Failed to obtain certificate for ${CDN_DOMAIN}"
-        else
+            -d "${CDN_DOMAIN}" 2>&1 | tee /tmp/certbot-cdn.log; then
             log "✓ Certificate obtained for ${CDN_DOMAIN}"
+        else
+            warn "Failed to obtain certificate for ${CDN_DOMAIN}"
+            warn "Check logs: /tmp/certbot-cdn.log"
         fi
         
         # Request Gitea certificate
-        if ! certbot certonly --nginx \
+        log "Requesting certificate for ${GITEA_DOMAIN}..."
+        if certbot certonly --nginx \
             ${certbot_email_flag} \
             --agree-tos \
             --non-interactive \
-            -d "${GITEA_DOMAIN}"; then
-            warn "Failed to obtain certificate for ${GITEA_DOMAIN}"
-        else
+            -d "${GITEA_DOMAIN}" 2>&1 | tee /tmp/certbot-gitea.log; then
             log "✓ Certificate obtained for ${GITEA_DOMAIN}"
+        else
+            warn "Failed to obtain certificate for ${GITEA_DOMAIN}"
+            warn "Check logs: /tmp/certbot-gitea.log"
         fi
         
     elif [[ "${SSL_MODE}" == "selfsigned" ]]; then
@@ -952,31 +1178,42 @@ setup_ssl_certificates() {
         mkdir -p /etc/letsencrypt/live/{${CDN_DOMAIN},${GITEA_DOMAIN}}
         
         # CDN certificate
+        log "Creating self-signed certificate for ${CDN_DOMAIN}..."
         openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
             -keyout "/etc/letsencrypt/live/${CDN_DOMAIN}/privkey.pem" \
             -out "/etc/letsencrypt/live/${CDN_DOMAIN}/fullchain.pem" \
             -subj "/CN=${CDN_DOMAIN}"
+        log "✓ Self-signed certificate created for ${CDN_DOMAIN}"
         
         # Gitea certificate
+        log "Creating self-signed certificate for ${GITEA_DOMAIN}..."
         openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
             -keyout "/etc/letsencrypt/live/${GITEA_DOMAIN}/privkey.pem" \
             -out "/etc/letsencrypt/live/${GITEA_DOMAIN}/fullchain.pem" \
             -subj "/CN=${GITEA_DOMAIN}"
-        
-        log "✓ Self-signed certificates generated"
+        log "✓ Self-signed certificate created for ${GITEA_DOMAIN}"
     fi
     
     # Reload nginx with SSL
-    systemctl reload nginx
+    log "Reloading Nginx with SSL configuration..."
+    if systemctl reload nginx; then
+        log "✓ Nginx reloaded with SSL"
+    else
+        warn "Failed to reload Nginx"
+    fi
     
     log "✓ SSL certificates configured"
+    echo ""
 }
 
 setup_monitoring() {
     info "Setting up monitoring services..."
+    echo ""
     
     # Configure msmtp if SMTP enabled
     if [[ "${SMTP_ENABLED}" == "true" ]]; then
+        log "Configuring SMTP email relay..."
+        
         local msmtp_template="${TEMPLATE_DIR}/msmtprc.template"
         
         if [[ -f "${msmtp_template}" ]]; then
@@ -984,16 +1221,93 @@ setup_monitoring() {
             
             envsubst < "${msmtp_template}" > /etc/msmtprc
             chmod 600 /etc/msmtprc
+            log "✓ Created /etc/msmtprc"
             
-            log "✓ SMTP configured"
+            # Create msmtp log file explicitly
+            log "Creating msmtp log file..."
+            touch /var/log/msmtp.log
+            chmod 666 /var/log/msmtp.log
+            log "✓ Created /var/log/msmtp.log with permissions 666"
+            
+            # Send test email
+            log "Sending test email to ${ALERT_EMAIL}..."
+            echo ""
+            
+            if echo -e "Subject: CDN System - Installation Complete\n\nThe Multi-Tenant CDN system installation has completed successfully.\n\nDomain: ${CDN_DOMAIN}\nGitea: ${GITEA_DOMAIN}\nTimestamp: $(date)\n\nThis is a test email to confirm SMTP is working." | \
+               msmtp -a default "${ALERT_EMAIL}" 2>&1 | tee /tmp/msmtp-test.log; then
+                log "✓ Test email sent successfully to ${ALERT_EMAIL}"
+                echo ""
+                
+                # Interactive confirmation
+                local email_received=""
+                local attempts=0
+                while [[ ${attempts} -lt 3 ]]; do
+                    echo -ne "${COLOR_CYAN}Did you receive the test email? (yes/no/retry):${COLOR_NC} "
+                    read -r email_received
+                    email_received="$(echo "${email_received}" | xargs | tr '[:upper:]' '[:lower:]')"
+                    
+                    case "${email_received}" in
+                        yes|y)
+                            log "✓ Email delivery confirmed!"
+                            break
+                            ;;
+                        no|n)
+                            warn "Test email not received"
+                            warn "Please check:"
+                            warn "  1. Spam/junk folder"
+                            warn "  2. SMTP logs: /var/log/msmtp.log"
+                            warn "  3. SMTP configuration: /etc/msmtprc"
+                            echo ""
+                            
+                            if prompt_confirm "Continue despite email issue?" "yes"; then
+                                log "Continuing installation..."
+                                break
+                            else
+                                error "Installation cancelled due to email issue"
+                                return 1
+                            fi
+                            ;;
+                        retry)
+                            log "Resending test email..."
+                            echo -e "Subject: CDN System - Test Email (Retry ${attempts})\n\nRetrying email delivery test at $(date)." | \
+                               msmtp -a default "${ALERT_EMAIL}" 2>&1
+                            log "✓ Test email resent"
+                            ((attempts++))
+                            ;;
+                        *)
+                            warn "Please answer 'yes', 'no', or 'retry'"
+                            ((attempts++))
+                            ;;
+                    esac
+                done
+            else
+                error "Failed to send test email"
+                warn "Check logs: /var/log/msmtp.log"
+                warn "Check configuration: /etc/msmtprc"
+                cat /tmp/msmtp-test.log
+                echo ""
+                
+                if prompt_confirm "Continue despite SMTP failure?" "no"; then
+                    warn "Continuing without working email notifications"
+                else
+                    error "Installation cancelled due to SMTP failure"
+                    return 1
+                fi
+            fi
+        else
+            warn "SMTP template not found: ${msmtp_template}"
         fi
+    else
+        log "SMTP disabled - skipping email configuration"
     fi
     
     log "✓ Monitoring configured"
+    echo ""
 }
 
 configure_systemd_services() {
     info "Configuring systemd service templates..."
+    echo ""
     
     # Copy service templates
     local autocommit_template="${TEMPLATE_DIR}/systemd/cdn-autocommit@.service.template"
@@ -1002,37 +1316,46 @@ configure_systemd_services() {
     if [[ -f "${autocommit_template}" ]]; then
         cp "${autocommit_template}" /etc/systemd/system/cdn-autocommit@.service
         log "✓ Auto-commit service template installed"
+    else
+        warn "Auto-commit template not found: ${autocommit_template}"
     fi
     
     if [[ -f "${quota_template}" ]]; then
         cp "${quota_template}" /etc/systemd/system/cdn-quota-monitor@.service
         log "✓ Quota monitor service template installed"
+    else
+        warn "Quota monitor template not found: ${quota_template}"
     fi
     
     systemctl daemon-reload
+    log "✓ Systemd daemon reloaded"
     
     log "✓ Systemd services configured"
+    echo ""
 }
 
 finalize_permissions() {
     info "Finalizing permissions..."
+    echo ""
     
     # Set ownership
+    log "Setting directory ownership..."
     chown -R "${NGINX_USER}:${NGINX_USER}" "${NGINX_DIR}"
+    log "✓ Nginx directory: ${NGINX_USER}:${NGINX_USER}"
+    
     chown -R "${GITEA_USER}:${CDN_GROUP}" "${GIT_DIR}"
+    log "✓ Git directory: ${GITEA_USER}:${CDN_GROUP}"
     
     # Set permissions
     chmod 755 "${BASE_DIR}"
     chmod 755 "${SFTP_DIR}"
     chmod 755 "${GIT_DIR}"
     chmod 755 "${NGINX_DIR}"
+    log "✓ Directory permissions set to 755"
     
     log "✓ Permissions finalized"
+    echo ""
 }
-
-################################################################################
-# COMPLETION MESSAGE
-################################################################################
 
 show_completion_message() {
     clear
@@ -1065,17 +1388,38 @@ Services:
   • Nginx: systemctl status nginx
   • Gitea: systemctl status gitea
 
+Gitea Admin Access:
+  • URL: https://${GITEA_DOMAIN}/
+  • Username: ${GITEA_ADMIN_USER}
+  • Email: ${GITEA_ADMIN_EMAIL}
+  • Password: [as configured during setup]
+
 Next Steps:
   1. Create your first tenant:
      sudo cdn-tenant-manager add <tenant-name>
   
-  2. Access Gitea web interface:
-     https://${GITEA_DOMAIN}/
-     Username: ${GITEA_ADMIN_USER}
-     Password: [as configured]
+  2. Upload SSH key for tenant
   
-  3. Review documentation:
+  3. Upload files via SFTP
+  
+  4. Access content at:
+     https://${CDN_DOMAIN}/<tenant-name>/path/to/file
+  
+  5. View Git history at:
+     https://${GITEA_DOMAIN}/<tenant-name>
+  
+  6. Review documentation:
      /opt/scripts/cdn/README.md"
+    
+    echo ""
+    
+    # Show important security reminders
+    wizard_info_box "🔒 Security Reminders" \
+        "1. Save your Gitea admin credentials securely
+2. Regularly update the system: apt-get update && apt-get upgrade
+3. Monitor logs: tail -f ${LOG_DIR}/cdn-*.log
+4. Backup configuration: ${CONFIG_DIR}/
+5. SSL certificates auto-renew via certbot"
     
     echo ""
     
