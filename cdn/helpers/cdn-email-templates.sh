@@ -353,6 +353,7 @@ queue_email() {
     local subject="$2"
     local body="$3"
     local priority="${4:-normal}"  # normal, high
+    local cc_recipients="${5:-}"  # Comma-separated CC list
     
     # Generate unique queue ID
     local queue_id
@@ -362,6 +363,7 @@ queue_email() {
     # Write email to queue
     cat > "${queue_file}" << EOF
 To: ${recipient}
+Cc: ${cc_recipients}
 Subject: ${subject}
 Priority: ${priority}
 Queued-At: $(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -418,6 +420,8 @@ process_email_queue() {
         recipient=$(grep "^To:" "${queue_file}" | cut -d' ' -f2-)
         local subject
         subject=$(grep "^Subject:" "${queue_file}" | cut -d' ' -f2-)
+        local cc_recipients
+        cc_recipients=$(grep "^Cc:" "${queue_file}" | cut -d' ' -f2-)
         local queued_at
         queued_at=$(grep "^Queued-At:" "${queue_file}" | cut -d' ' -f2-)
         local retry_count
@@ -439,7 +443,7 @@ process_email_queue() {
         body=$(awk '/^$/{flag=1; next} flag' "${queue_file}")
         
         # Retry sending
-        if send_email_direct "${recipient}" "${subject}" "${body}"; then
+        if send_email_direct "${recipient}" "${subject}" "${body}" "normal" "${cc_recipients}"; then
             log "Successfully sent queued email to ${recipient}"
             rm -f "${queue_file}"
             ((processed++))
@@ -485,6 +489,7 @@ send_email_direct() {
     local subject="$2"
     local body="$3"
     local priority="${4:-normal}"
+    local cc_recipients="${5:-}"  # NEW: Comma-separated CC list
     
     if ! check_smtp_available; then
         debug "SMTP not available, cannot send email"
@@ -503,6 +508,12 @@ From: ${SMTP_FROM}
 Subject: ${subject}
 Content-Type: text/plain; charset=UTF-8"
     
+    # Add CC header if provided
+    if [[ -n "${cc_recipients}" ]]; then
+        email_headers="${email_headers}
+Cc: ${cc_recipients}"
+    fi
+    
     # Add priority header if high
     if [[ "${priority}" == "high" ]]; then
         email_headers="${email_headers}
@@ -510,9 +521,19 @@ X-Priority: 1
 Importance: high"
     fi
     
-    # Send via msmtp
-    if echo -e "${email_headers}\n\n${body}" | msmtp -a default "${recipient}" 2>&1 | tee -a /var/log/msmtp.log; then
-        debug "Email sent successfully to ${recipient}"
+    # Send via msmtp (will deliver to To + Cc automatically)
+    local msmtp_recipients="${recipient}"
+    if [[ -n "${cc_recipients}" ]]; then
+        # Convert comma-separated CC list to space-separated for msmtp
+        msmtp_recipients="${recipient} ${cc_recipients//,/ }"
+    fi
+    
+    if echo -e "${email_headers}\n\n${body}" | msmtp -a default ${msmtp_recipients} 2>&1 | tee -a /var/log/msmtp.log; then
+        if [[ -n "${cc_recipients}" ]]; then
+            debug "Email sent successfully to ${recipient} (CC: ${cc_recipients})"
+        else
+            debug "Email sent successfully to ${recipient}"
+        fi
         return 0
     else
         warn "Failed to send email to ${recipient}"
@@ -545,26 +566,25 @@ send_tenant_email() {
     # Format subject with level
     local formatted_subject="[CDN ${level}] ${subject} - Tenant: ${tenant}"
     
-    # Try to send to tenant
-    local tenant_sent=false
-    if send_email_direct "${tenant_email}" "${formatted_subject}" "${body}" "normal"; then
-        tenant_sent=true
-        mark_alert_sent "${tenant_email}" "${alert_type}"
-    else
-        queue_email "${tenant_email}" "${formatted_subject}" "${body}" "normal"
-    fi
-    
-    # Also send to admin (always, no rate limit for admin)
-    if [[ -n "${ALERT_EMAIL}" ]]; then
-        if ! send_email_direct "${ALERT_EMAIL}" "${formatted_subject}" "${body}" "normal"; then
-            queue_email "${ALERT_EMAIL}" "${formatted_subject}" "${body}" "normal"
+    # Send to tenant with admin CCed (single email, not two separate emails)
+    if [[ -z "${ALERT_EMAIL}" ]]; then
+        warn "ALERT_EMAIL not configured, sending to tenant only"
+        if send_email_direct "${tenant_email}" "${formatted_subject}" "${body}" "normal"; then
+            mark_alert_sent "${tenant_email}" "${alert_type}"
+            log "Sent ${level} email to tenant ${tenant} (${tenant_email})"
+        else
+            queue_email "${tenant_email}" "${formatted_subject}" "${body}" "normal"
+            log "Queued ${level} email for tenant ${tenant} (${tenant_email})"
         fi
-    fi
-    
-    if [[ "${tenant_sent}" == true ]]; then
-        log "Sent ${level} email to tenant ${tenant} (${tenant_email}) and admin"
     else
-        log "Queued ${level} email for tenant ${tenant} (${tenant_email}), sent to admin"
+        # Send to tenant with admin CCed
+        if send_email_direct "${tenant_email}" "${formatted_subject}" "${body}" "normal" "${ALERT_EMAIL}"; then
+            mark_alert_sent "${tenant_email}" "${alert_type}"
+            log "Sent ${level} email to tenant ${tenant} (${tenant_email}) with CC to admin (${ALERT_EMAIL})"
+        else
+            queue_email "${tenant_email}" "${formatted_subject}" "${body}" "normal"
+            log "Queued ${level} email for tenant ${tenant} (${tenant_email})"
+        fi
     fi
     
     return 0
